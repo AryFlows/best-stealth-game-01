@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frost Veil — a top-down stealth game</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #14161c; color: #f3f4f6; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  #wrap { width: 1280px; margin: 0 auto; padding: 12px 10px 20px; }
+  h1 { font-size: 22px; letter-spacing: 2px; color: #e5e7eb; }
+  h1 span { color: #7dd3fc; }
+  #hud { display: flex; align-items: center; gap: 10px; margin: 10px 0; flex-wrap: wrap; }
+  .badge { font-weight: 800; font-size: 15px; padding: 6px 12px; border-radius: 6px; background: #14532d; color: #bbf7d0; min-width: 110px; text-align: center; }
+  .badge.suspicious { background: #92400e; color: #fde68a; }
+  .badge.alert { background: #991b1b; color: #fecaca; animation: blink 0.7s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: 0.55; } }
+  .meter { width: 180px; height: 18px; background: #374151; border-radius: 9px; overflow: hidden; }
+  #detect-fill { height: 100%; width: 0%; background: #f59e0b; }
+  .pill { background: #1f2937; border: 1px solid #4b5563; border-radius: 6px; padding: 6px 10px; font-size: 13px; font-weight: 600; }
+  #detect-text { font-weight: 800; color: #fbbf24; min-width: 44px; }
+  #objective { color: #d1d5db; font-size: 13px; }
+  #timer { margin-left: auto; font-weight: 800; font-size: 15px; color: #e5e7eb; }
+  #guard-list { display: flex; gap: 8px; margin: 0 0 10px; flex-wrap: wrap; }
+  .guard-chip { background: #1f2937; border: 1px solid #4b5563; border-radius: 20px; padding: 4px 12px; font-size: 12px; font-weight: 700; color: #e5e7eb; }
+  .guard-chip.investigate { border-color: #f59e0b; color: #fde68a; }
+  .guard-chip.chase { border-color: #ef4444; color: #fecaca; background: #7f1d1d; }
+  .guard-chip.seeing { border-color: #ef4444; box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.55); }
+  #seen-by { background: #7f1d1d; border-color: #ef4444; color: #fecaca; }
+  #stage { position: relative; width: 1260px; height: 788px; }
+  canvas { display: block; background: #ece5cd; border-radius: 4px; width: 1260px; height: 788px; }
+  #toast { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); background: rgba(17, 24, 39, 0.92); color: #f9fafb; padding: 10px 18px; border-radius: 8px; font-size: 15px; font-weight: 700; opacity: 0; transition: opacity 0.2s; pointer-events: none; white-space: nowrap; }
+  #toast.show { opacity: 1; }
+  #noise-flash { position: absolute; top: 12px; right: 12px; background: #0e7490; color: #fff; font-weight: 800; font-size: 12px; padding: 5px 10px; border-radius: 6px; opacity: 0; transition: opacity 0.15s; }
+  #noise-flash.show { opacity: 1; }
+  .overlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(10, 12, 18, 0.78); border-radius: 4px; }
+  .overlay.show { display: flex; }
+  .panel { background: #f9fafb; color: #111827; border-radius: 12px; padding: 32px 40px; max-width: 620px; text-align: center; box-shadow: 0 12px 40px rgba(0,0,0,0.5); }
+  .panel h2 { font-size: 34px; letter-spacing: 3px; margin-bottom: 6px; }
+  .panel h2 span { color: #0e7490; }
+  .panel p { font-size: 15px; line-height: 1.55; margin: 10px 0; color: #374151; }
+  .panel .judge-note { font-size: 13px; background: #e0f2fe; border: 1px solid #7dd3fc; border-radius: 8px; padding: 10px 12px; color: #0c4a6e; }
+  .panel .controls { font-size: 13px; background: #f3f4f6; border-radius: 8px; padding: 10px 12px; }
+  .panel button { margin-top: 14px; font-size: 17px; font-weight: 800; padding: 12px 34px; border: 0; border-radius: 8px; background: #0e7490; color: #fff; cursor: pointer; }
+  .panel button:hover { background: #155e75; }
+  #win-stats, #caught-guard { font-weight: 700; }
+  #help { margin-top: 10px; font-size: 12.5px; color: #9ca3af; line-height: 1.6; }
+  #help b { color: #d1d5db; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <h1>FROST <span>VEIL</span> — a top-down stealth game</h1>
+  <div id="hud">
+    <div id="state-badge" class="badge hidden">HIDDEN</div>
+    <div class="meter"><div id="detect-fill"></div></div>
+    <span id="detect-text">0%</span>
+    <span id="intel-count" class="pill">INTEL 0/3</span>
+    <span id="cover-label" class="pill">EXPOSED</span>
+    <span id="seen-by" class="pill" style="display:none"></span>
+    <span id="objective" class="pill">OBJECTIVE: steal 3 intel, then reach the EXIT</span>
+    <span id="timer">0:00</span>
+  </div>
+  <div id="guard-list"></div>
+  <div id="stage">
+    <canvas id="game-canvas" width="1280" height="800"></canvas>
+    <div id="noise-flash">RUNNING — LOUD!</div>
+    <div id="toast"></div>
+    <div id="start-screen" class="overlay">
+      <div class="panel">
+        <h2>FROST <span>VEIL</span></h2>
+        <p>Slip through the night manor, steal all <b>3 intel</b>, and reach the green <b>EXIT</b> unseen.</p>
+        <p class="judge-note">4 guards on patrol routes · warm vision cones · crates block sight · dark shadow zones hide you · running is loud and guards investigate sounds · the meter drains when you break line of sight.</p>
+        <p class="controls"><b>WASD / arrows</b> move · <b>Shift</b> run (loud) · <b>C</b> crouch (quiet, harder to spot) · <b>M</b> mute · <b>R</b> restart after being caught</p>
+        <button id="start-btn">BEGIN THE INFILTRATION</button>
+      </div>
+    </div>
+    <div id="win-screen" class="overlay">
+      <div class="panel">
+        <h2>GHOST <span>RUN</span></h2>
+        <p>You stole every file and slipped out the exit.</p>
+        <p id="win-stats"></p>
+        <button id="again-btn">PLAY AGAIN</button>
+      </div>
+    </div>
+    <div id="caught-screen" class="overlay">
+      <div class="panel">
+        <h2>CAUGHT!</h2>
+        <p id="caught-guard"></p>
+        <p>The manor keeps its secrets — this time. Slip back in and try a quieter route.</p>
+        <button id="retry-btn">TRY AGAIN (R)</button>
+      </div>
+    </div>
+  </div>
+  <p id="help"><b>WASD / arrows</b> move &nbsp;·&nbsp; <b>Shift</b> run — fast, but guards hear it &nbsp;·&nbsp; <b>C</b> crouch — slow and quiet &nbsp;·&nbsp; hide in <b>dark shadow zones</b>, keep <b>crates</b> between you and a guard &nbsp;·&nbsp; break line of sight and the suspicion meter drains &nbsp;·&nbsp; <b>M</b> mute</p>
+</div>
+<script src="src/config.js"></script>
+<script src="src/level-map.js"></script>
+<script src="src/cover-shadows.js"></script>
+<script src="src/player-movement.js"></script>
+<script src="src/patrol-routes.js"></script>
+<script src="src/vision-cones.js"></script>
+<script src="src/guard-ai.js"></script>
+<script src="src/detection-meter.js"></script>
+<script src="src/audio-footsteps.js"></script>
+<script src="src/hud-readouts.js"></script>
+<script src="src/render.js"></script>
+<script src="src/shots.js"></script>
+<script src="src/main.js"></script>
+</body>
+</html>
